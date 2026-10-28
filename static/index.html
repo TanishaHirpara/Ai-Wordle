@@ -1,0 +1,2212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Wordle Solver: Heuristic Search, Information Gain &amp; Adversarial Reasoning</title>
+  <!-- Chart.js from cdnjs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    /* ==========================================================================
+       CSS Variables & Theme System
+       ========================================================================== */
+    :root {
+      --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --color-green: #6aaa64;
+      --color-yellow: #c9b458;
+      --color-gray: #787c7e;
+      --color-gray-dark: #3a3a3c;
+      
+      /* Light theme (default) */
+      --bg-body: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-surface: #f1f5f9;
+      --bg-hover: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --text-light: #94a3b8;
+      --border-color: #cbd5e1;
+      --tile-border-empty: #d3d6da;
+      --tile-border-filled: #878a8c;
+      --tile-bg-empty: #ffffff;
+      --tile-text: #0f172a;
+      --kb-bg: #d3d6da;
+      --kb-text: #1a1a1b;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+    }
+
+    /* Auto Dark Mode from System Setting */
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg-body: #121213;
+        --bg-card: #1a1a1b;
+        --bg-surface: #272729;
+        --bg-hover: #333336;
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+        --text-light: #64748b;
+        --border-color: #3a3a3c;
+        --tile-border-empty: #3a3a3c;
+        --tile-border-filled: #565758;
+        --tile-bg-empty: #121213;
+        --tile-text: #ffffff;
+        --kb-bg: #818384;
+        --kb-text: #ffffff;
+        --accent: #3b82f6;
+        --accent-hover: #60a5fa;
+        --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+        --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+      }
+    }
+
+    /* Explicit Dark Theme override */
+    [data-theme="dark"] {
+      --bg-body: #121213;
+      --bg-card: #1a1a1b;
+      --bg-surface: #272729;
+      --bg-hover: #333336;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --text-light: #64748b;
+      --border-color: #3a3a3c;
+      --tile-border-empty: #3a3a3c;
+      --tile-border-filled: #565758;
+      --tile-bg-empty: #121213;
+      --tile-text: #ffffff;
+      --kb-bg: #818384;
+      --kb-text: #ffffff;
+      --accent: #3b82f6;
+      --accent-hover: #60a5fa;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    }
+
+    /* ==========================================================================
+       Base Styles & Reset
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-body);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 1.5;
+      padding-bottom: 40px;
+      transition: background-color 0.25s ease, color 0.25s ease;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 980px;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    /* ==========================================================================
+       Header & Theme Switcher
+       ========================================================================== */
+    header {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 16px;
+    }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .project-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 4px 10px;
+      background: var(--bg-surface);
+      color: var(--accent);
+      border-radius: 9999px;
+      border: 1px solid var(--border-color);
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .theme-toggle-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    .theme-toggle-btn:hover {
+      background: var(--bg-hover);
+    }
+
+    h1.project-title {
+      font-size: 1.7rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text-main);
+    }
+
+    p.project-subtitle {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+
+    /* ==========================================================================
+       Toast / Alert Banner
+       ========================================================================== */
+    #error-banner {
+      display: none;
+      background-color: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.9rem;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      box-shadow: var(--shadow-sm);
+      animation: fadeIn 0.2s ease;
+    }
+    [data-theme="dark"] #error-banner,
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) #error-banner {
+        background-color: #450a0a;
+        color: #fecaca;
+        border-color: #7f1d1d;
+      }
+    }
+    #error-banner.visible {
+      display: flex;
+    }
+    #error-banner button.dismiss-btn {
+      background: transparent;
+      border: none;
+      color: inherit;
+      font-size: 1.2rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* ==========================================================================
+       "How It Works" Panel
+       ========================================================================== */
+    .info-panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+
+    .info-header {
+      padding: 12px 18px;
+      background: var(--bg-surface);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .info-header h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .info-toggle-indicator {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      transition: transform 0.2s ease;
+    }
+
+    .info-content {
+      padding: 16px 18px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .info-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .info-card-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .info-card-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .tag-entropy { color: var(--color-green); }
+    .tag-candidate { color: var(--accent); }
+    .tag-freq { color: var(--color-yellow); }
+    .tag-random { color: var(--color-gray); }
+
+    /* ==========================================================================
+       Tab Navigation
+       ========================================================================== */
+    .tabs-nav {
+      display: flex;
+      gap: 6px;
+      border-bottom: 2px solid var(--border-color);
+      overflow-x: auto;
+      padding-bottom: 1px;
+      scrollbar-width: none;
+    }
+    .tabs-nav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      padding: 10px 16px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 6px 6px 0 0;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+      background-color: var(--bg-surface);
+    }
+
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background-color: transparent;
+    }
+
+    /* ==========================================================================
+       Tab Content Panes
+       ========================================================================== */
+    .tab-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: var(--shadow-sm);
+      min-height: 480px;
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .tab-content.active {
+      display: flex;
+    }
+
+    /* ==========================================================================
+       Form Controls & Buttons
+       ========================================================================== */
+    .controls-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      background: var(--bg-surface);
+      padding: 14px 18px;
+      border-radius: 10px;
+      border: 1px solid var(--border-color);
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .form-group label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    select.input-control,
+    input.input-control {
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1.5px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    select.input-control:focus,
+    input.input-control:focus {
+      border-color: var(--accent);
+    }
+
+    input.input-control {
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      width: 140px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 9px 18px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      color: #ffffff;
+    }
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background-color: var(--bg-hover);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+    }
+    .btn-secondary:hover:not(:disabled) {
+      background-color: var(--border-color);
+    }
+
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .quick-words-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .chip-btn {
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .chip-btn:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    /* ==========================================================================
+       Wordle Board & Tiles
+       ========================================================================== */
+    .board-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      margin: 10px 0;
+    }
+
+    .wordle-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      animation: fadeInRow 0.25s ease;
+    }
+
+    .tiles-group {
+      display: grid;
+      grid-template-columns: repeat(5, 54px);
+      gap: 6px;
+    }
+
+    .tile {
+      width: 54px;
+      height: 54px;
+      border: 2px solid var(--tile-border-empty);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 1.85rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      user-select: none;
+      background-color: var(--tile-bg-empty);
+      color: var(--tile-text);
+      perspective: 1000px;
+      border-radius: 4px;
+      transition: border-color 0.15s, transform 0.15s;
+    }
+
+    .tile.filled {
+      border-color: var(--tile-border-filled);
+      animation: popTile 0.12s ease;
+    }
+
+    .tile.interactive {
+      cursor: pointer;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    }
+    .tile.interactive:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+
+    /* Flip animation logic */
+    .tile.flip {
+      animation: flipTileAnim 0.5s ease forwards;
+    }
+
+    @keyframes flipTileAnim {
+      0% {
+        transform: rotateX(0deg);
+      }
+      50% {
+        transform: rotateX(90deg);
+      }
+      100% {
+        transform: rotateX(0deg);
+      }
+    }
+
+    @keyframes popTile {
+      0% { transform: scale(0.9); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes shakeRow {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+
+    .shake {
+      animation: shakeRow 0.4s ease;
+    }
+
+    @keyframes fadeInRow {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .tile.green {
+      background-color: var(--color-green) !important;
+      border-color: var(--color-green) !important;
+      color: #ffffff !important;
+    }
+
+    .tile.yellow {
+      background-color: var(--color-yellow) !important;
+      border-color: var(--color-yellow) !important;
+      color: #ffffff !important;
+    }
+
+    .tile.gray {
+      background-color: var(--color-gray) !important;
+      border-color: var(--color-gray) !important;
+      color: #ffffff !important;
+    }
+
+    .remaining-badge {
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      background: var(--bg-surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border-color);
+      white-space: nowrap;
+      min-width: 140px;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .remaining-badge.visible {
+      opacity: 1;
+    }
+
+    /* Status banner */
+    .status-banner {
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      text-align: center;
+      width: 100%;
+      max-width: 480px;
+      margin: 8px auto;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .status-banner.success {
+      background-color: rgba(106, 170, 100, 0.15);
+      color: var(--color-green);
+      border: 1px solid var(--color-green);
+    }
+
+    .status-banner.failure {
+      background-color: rgba(239, 68, 68, 0.15);
+      color: #ef4444;
+      border: 1px solid #ef4444;
+    }
+
+    .status-banner.info {
+      background-color: rgba(59, 130, 246, 0.15);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+
+    /* ==========================================================================
+       Tab 2 Specific: Candidate words list chips
+       ========================================================================== */
+    .word-chips-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-height: 140px;
+      overflow-y: auto;
+      padding: 10px;
+      background: var(--bg-surface);
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .word-chip {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-main);
+    }
+
+    .tile-helper-guide {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .legend-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 600;
+    }
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+
+    /* ==========================================================================
+       Tab 3 Specific: Adversarial Keyboard
+       ========================================================================== */
+    .adversarial-header-note {
+      background: var(--bg-surface);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 8px 8px 0;
+      padding: 12px 16px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+    .adversarial-header-note strong {
+      color: var(--text-main);
+    }
+
+    .keyboard-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      width: 100%;
+      user-select: none;
+    }
+
+    .kb-row {
+      display: flex;
+      gap: 5px;
+      touch-action: manipulation;
+    }
+
+    .kb-key {
+      min-width: 36px;
+      height: 52px;
+      background-color: var(--kb-bg);
+      color: var(--kb-text);
+      border: none;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 0 8px;
+      transition: background-color 0.15s, transform 0.1s;
+    }
+
+    .kb-key:active {
+      transform: scale(0.95);
+    }
+
+    .kb-key.key-wide {
+      min-width: 58px;
+      font-size: 0.75rem;
+    }
+
+    .kb-key.green {
+      background-color: var(--color-green) !important;
+      color: #ffffff !important;
+    }
+    .kb-key.yellow {
+      background-color: var(--color-yellow) !important;
+      color: #ffffff !important;
+    }
+    .kb-key.gray {
+      background-color: var(--color-gray) !important;
+      color: #ffffff !important;
+      opacity: 0.7;
+    }
+
+    /* ==========================================================================
+       Tab 4 Specific: Results Charts & Table
+       ========================================================================== */
+    .results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 20px;
+      width: 100%;
+    }
+
+    .chart-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .chart-card.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .chart-card-title {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--text-main);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chart-canvas-container {
+      position: relative;
+      height: 260px;
+      width: 100%;
+    }
+
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--bg-card);
+    }
+
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+      text-align: left;
+    }
+
+    table.data-table th {
+      background: var(--bg-surface);
+      padding: 10px 14px;
+      font-weight: 700;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border-color);
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    table.data-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    table.data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    table.data-table tr:hover td {
+      background: var(--bg-surface);
+    }
+
+    /* ==========================================================================
+       Loading Spinner
+       ========================================================================== */
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid rgba(255, 255, 255, 0.3);
+      border-top-color: #ffffff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+
+    .spinner.dark {
+      border-color: rgba(0, 0, 0, 0.15);
+      border-top-color: var(--accent);
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* ==========================================================================
+       Mobile Responsive Adjustments
+       ========================================================================== */
+    @media (max-width: 640px) {
+      .app-container {
+        padding: 12px;
+      }
+      h1.project-title {
+        font-size: 1.35rem;
+      }
+      .tab-content {
+        padding: 16px 12px;
+      }
+      .tiles-group {
+        grid-template-columns: repeat(5, 46px);
+        gap: 5px;
+      }
+      .tile {
+        width: 46px;
+        height: 46px;
+        font-size: 1.5rem;
+      }
+      .kb-key {
+        min-width: 29px;
+        height: 46px;
+        font-size: 0.85rem;
+        padding: 0 4px;
+      }
+      .kb-key.key-wide {
+        min-width: 46px;
+        font-size: 0.7rem;
+      }
+      .remaining-badge {
+        font-size: 0.75rem;
+        min-width: 110px;
+        padding: 3px 6px;
+      }
+      .results-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- Top Header -->
+    <header>
+      <div class="header-top">
+        <span class="project-badge">
+          🎓 University AI Project Demo
+        </span>
+        <div class="header-controls">
+          <button id="theme-btn" class="theme-toggle-btn" aria-label="Toggle Color Theme">
+            <span id="theme-icon">🌓</span>
+            <span id="theme-text">Theme: System</span>
+          </button>
+        </div>
+      </div>
+      <h1 class="project-title">AI Wordle Solver</h1>
+      <p class="project-subtitle">Heuristic Search, Information Gain and Adversarial Reasoning</p>
+    </header>
+
+    <!-- Global Alert / Error Notification -->
+    <div id="error-banner" role="alert">
+      <span id="error-message">Error message placeholder</span>
+      <button class="dismiss-btn" onclick="dismissError()" aria-label="Close error">&times;</button>
+    </div>
+
+    <!-- How It Works Panel -->
+    <section class="info-panel" id="info-panel">
+      <div class="info-header" onclick="toggleInfoPanel()">
+        <h3>💡 How the AI Solvers Work</h3>
+        <span class="info-toggle-indicator" id="info-toggle-indicator">▼</span>
+      </div>
+      <div class="info-content" id="info-content">
+        <div class="info-card">
+          <div class="info-card-title tag-random">
+            <span>🎲</span> Random Baseline
+          </div>
+          <div class="info-card-desc">
+            Picks any possible word uniformly at random from remaining candidates. Establishes the performance floor.
+          </div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-title tag-freq">
+            <span>📊</span> Frequency Heuristic
+          </div>
+          <div class="info-card-desc">
+            Scores words by how common their letters are among remaining candidates, greedily choosing words with high-frequency letters.
+          </div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-title tag-candidate">
+            <span>🛡️</span> Candidate Reduction
+          </div>
+          <div class="info-card-desc">
+            Minimax heuristic: for every candidate guess, simulates all possible feedback patterns and picks the word that minimises the worst-case surviving words.
+          </div>
+        </div>
+        <div class="info-card">
+          <div class="info-card-title tag-entropy">
+            <span>🧠</span> Shannon Entropy
+          </div>
+          <div class="info-card-desc">
+            Information gain: computes \(H = -\sum p_i \log_2(p_i)\) across feedback distributions to pick the guess expected to maximise revealed information (bits).
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs-nav" role="tablist">
+      <button class="tab-btn active" role="tab" id="tab-btn-solve" onclick="switchTab('tab-solve')">
+        <span>🤖</span> Watch the AI solve
+      </button>
+      <button class="tab-btn" role="tab" id="tab-btn-suggest" onclick="switchTab('tab-suggest')">
+        <span>🧩</span> Help me solve my Wordle
+      </button>
+      <button class="tab-btn" role="tab" id="tab-btn-evil" onclick="switchTab('tab-evil')">
+        <span>👿</span> Play against Evil Wordle
+      </button>
+      <button class="tab-btn" role="tab" id="tab-btn-results" onclick="switchTab('tab-results')">
+        <span>📈</span> Results
+      </button>
+    </nav>
+
+    <!-- ======================================================================
+         TAB 1: Watch the AI solve
+         ====================================================================== -->
+    <main class="tab-content active" id="tab-solve" role="tabpanel">
+      <div class="controls-bar">
+        <div class="form-group">
+          <label for="solve-agent-select">AI Strategy Agent</label>
+          <select id="solve-agent-select" class="input-control">
+            <option value="entropy" selected>Entropy (Information Gain)</option>
+            <option value="candidate">Candidate Reduction (Minimax)</option>
+            <option value="frequency">Letter Frequency</option>
+            <option value="random">Random Baseline</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="solve-secret-input">Secret 5-Letter Word</label>
+          <input type="text" id="solve-secret-input" class="input-control" maxlength="5" placeholder="CRANE" value="CRANE" spellcheck="false" autocomplete="off">
+        </div>
+
+        <div class="form-group" style="justify-content: flex-end;">
+          <button id="solve-start-btn" class="btn btn-primary" onclick="handleSolve()">
+            <span id="solve-btn-text">Solve Wordle</span>
+          </button>
+        </div>
+
+        <div class="form-group" style="justify-content: flex-end;">
+          <span style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600;">Presets:</span>
+          <div class="quick-words-group">
+            <button class="chip-btn" onclick="setSecretWord('CRANE')">CRANE</button>
+            <button class="chip-btn" onclick="setSecretWord('SLATE')">SLATE</button>
+            <button class="chip-btn" onclick="setSecretWord('ROBOT')">ROBOT</button>
+            <button class="chip-btn" onclick="setSecretWord('FUZZY')">FUZZY</button>
+            <button class="chip-btn" onclick="pickRandomSecret()">Random</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Result Banner -->
+      <div id="solve-summary-status"></div>
+
+      <!-- Board where turns animate -->
+      <div class="board-container" id="solve-board">
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 30px;">
+          Choose an agent and secret word, then click <strong>Solve Wordle</strong> to watch the step-by-step search progression.
+        </p>
+      </div>
+    </main>
+
+    <!-- ======================================================================
+         TAB 2: Help me solve my Wordle
+         ====================================================================== -->
+    <section class="tab-content" id="tab-suggest" role="tabpanel">
+      <div class="controls-bar">
+        <div class="form-group">
+          <label for="suggest-agent-select">Advisory Agent</label>
+          <select id="suggest-agent-select" class="input-control" onchange="handleSuggestAgentChange()">
+            <option value="entropy" selected>Entropy (Information Gain)</option>
+            <option value="candidate">Candidate Reduction</option>
+            <option value="frequency">Letter Frequency</option>
+            <option value="random">Random Baseline</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="justify-content: flex-end;">
+          <button class="btn btn-secondary" onclick="resetSuggestGame()">
+            <span>🔄</span> Reset Game
+          </button>
+        </div>
+
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Candidates Remaining:</span>
+          <span id="suggest-remaining-badge" class="remaining-badge visible" style="min-width: 60px;">2,315</span>
+        </div>
+      </div>
+
+      <!-- History of completed turns -->
+      <div class="board-container" id="suggest-history-board"></div>
+
+      <!-- Current Active Suggested Turn -->
+      <div id="suggest-active-section" style="display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 6px;">
+        <div style="text-align: center;">
+          <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--accent); letter-spacing: 0.06em;">
+            AI Suggested Guess
+          </span>
+          <div class="tiles-group" id="suggest-tiles" style="margin-top: 6px;">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <div class="tile-helper-guide">
+          <span>Click each tile to cycle color:</span>
+          <span class="legend-indicator"><span class="legend-dot" style="background: var(--color-gray);"></span> Gray (Absent)</span>
+          <span>&rarr;</span>
+          <span class="legend-indicator"><span class="legend-dot" style="background: var(--color-yellow);"></span> Yellow (Misplaced)</span>
+          <span>&rarr;</span>
+          <span class="legend-indicator"><span class="legend-dot" style="background: var(--color-green);"></span> Green (Exact)</span>
+        </div>
+
+        <button id="suggest-submit-btn" class="btn btn-primary" onclick="submitSuggestFeedback()">
+          Submit Feedback &amp; Get Next Guess
+        </button>
+      </div>
+
+      <!-- Word list drawer -->
+      <div style="margin-top: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <span style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.05em;">
+            Sample Surviving Candidates (First 20)
+          </span>
+        </div>
+        <div class="word-chips-container" id="suggest-words-list">
+          <span style="color: var(--text-muted); font-size: 0.8rem;">Loading initial candidates...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         TAB 3: Play against Evil Wordle
+         ====================================================================== -->
+    <section class="tab-content" id="tab-evil" role="tabpanel">
+      <div class="adversarial-header-note">
+        <strong>😈 Adversarial Reasoning Opponent:</strong> Evil Wordle does not commit to a secret word in advance!
+        Instead, after each guess, it groups all consistent remaining words by feedback patterns and returns the pattern with the
+        <strong>largest surviving candidate group</strong>. The opponent never lies, but always picks the hardest honest answer.
+      </div>
+
+      <div class="controls-bar" style="justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Opponent Status:</span>
+          <span id="evil-remaining-badge" class="remaining-badge visible">Candidates alive: 2,315</span>
+        </div>
+        <button class="btn btn-secondary" onclick="resetEvilGame()">
+          <span>🔄</span> New Game
+        </button>
+      </div>
+
+      <div id="evil-status-banner"></div>
+
+      <!-- Wordle Grid -->
+      <div class="board-container" id="evil-board">
+        <!-- 6 rows generated by JS -->
+      </div>
+
+      <!-- On-Screen Keyboard -->
+      <div class="keyboard-wrapper" id="evil-keyboard">
+        <!-- Generated by JS -->
+      </div>
+    </section>
+
+    <!-- ======================================================================
+         TAB 4: Results
+         ====================================================================== -->
+    <section class="tab-content" id="tab-results" role="tabpanel">
+      <div class="controls-bar" style="justify-content: space-between;">
+        <div>
+          <span style="font-weight: 700; font-size: 1rem;">Benchmark Evaluation</span>
+          <span style="font-size: 0.82rem; color: var(--text-muted); margin-left: 8px;">(Aggregated via simulate.py)</span>
+        </div>
+        <button class="btn btn-secondary" onclick="fetchResultsData()">
+          <span>🔄</span> Refresh Results
+        </button>
+      </div>
+
+      <!-- Loading / Error Message Container -->
+      <div id="results-message" style="display: none;"></div>
+
+      <!-- Benchmark Summary Table -->
+      <div class="table-container">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Agent Strategy</th>
+              <th>Average Guesses</th>
+              <th>Win Rate</th>
+              <th>Simulated Games</th>
+              <th>Benchmark Runtime</th>
+            </tr>
+          </thead>
+          <tbody id="results-table-body">
+            <tr>
+              <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                Loading results from /api/results...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Charts Grid -->
+      <div class="results-grid">
+        <div class="chart-card">
+          <div class="chart-card-title">
+            <span>Average Guesses per Agent</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">Lower is better</span>
+          </div>
+          <div class="chart-canvas-container">
+            <canvas id="chart-avg-guesses"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-card-title">
+            <span>Win Rate (%)</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">Within 6 guesses</span>
+          </div>
+          <div class="chart-canvas-container">
+            <canvas id="chart-win-rate"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card full-width">
+          <div class="chart-card-title">
+            <span>Histogram of Guesses Needed</span>
+            <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">Distribution across test rounds</span>
+          </div>
+          <div class="chart-canvas-container" style="height: 300px;">
+            <canvas id="chart-histogram"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ==========================================================================
+       Vanilla JavaScript Logic
+       ========================================================================== -->
+  <script>
+    /* ==========================================================================
+       Global Utilities & State
+       ========================================================================== */
+    const PRESET_SAMPLE_WORDS = ["CRANE", "SLATE", "ROBOT", "FUZZY", "VIVID", "LIGHT", "AUDIO", "FLAIR", "BRICK"];
+    
+    // Theme Management
+    let currentThemeMode = 'system'; // 'system', 'light', 'dark'
+    
+    function initTheme() {
+      const saved = localStorage.getItem('wordle_theme') || 'system';
+      setThemeMode(saved);
+      
+      // Listen for OS scheme change
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (currentThemeMode === 'system') {
+          applyTheme('system');
+          updateChartsTheme();
+        }
+      });
+    }
+
+    function toggleTheme() {
+      if (currentThemeMode === 'system') setThemeMode('dark');
+      else if (currentThemeMode === 'dark') setThemeMode('light');
+      else setThemeMode('system');
+    }
+
+    function setThemeMode(mode) {
+      currentThemeMode = mode;
+      localStorage.setItem('wordle_theme', mode);
+      applyTheme(mode);
+      updateChartsTheme();
+    }
+
+    function applyTheme(mode) {
+      const root = document.documentElement;
+      const icon = document.getElementById('theme-icon');
+      const text = document.getElementById('theme-text');
+      
+      if (mode === 'dark') {
+        root.setAttribute('data-theme', 'dark');
+        icon.textContent = '🌙';
+        text.textContent = 'Theme: Dark';
+      } else if (mode === 'light') {
+        root.setAttribute('data-theme', 'light');
+        icon.textContent = '☀️';
+        text.textContent = 'Theme: Light';
+      } else {
+        root.removeAttribute('data-theme');
+        icon.textContent = '🌓';
+        text.textContent = 'Theme: System';
+      }
+    }
+
+    document.getElementById('theme-btn').addEventListener('click', toggleTheme);
+
+    function isDarkModeActive() {
+      const themeAttr = document.documentElement.getAttribute('data-theme');
+      if (themeAttr === 'dark') return true;
+      if (themeAttr === 'light') return false;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+
+    // Friendly Error Banner
+    function showError(message) {
+      const banner = document.getElementById('error-banner');
+      const msgSpan = document.getElementById('error-message');
+      msgSpan.textContent = message;
+      banner.classList.add('visible');
+    }
+
+    function dismissError() {
+      const banner = document.getElementById('error-banner');
+      banner.classList.remove('visible');
+    }
+
+    // Info panel toggle
+    function toggleInfoPanel() {
+      const content = document.getElementById('info-content');
+      const indicator = document.getElementById('info-toggle-indicator');
+      if (content.style.display === 'none') {
+        content.style.display = 'grid';
+        indicator.textContent = '▼';
+      } else {
+        content.style.display = 'none';
+        indicator.textContent = '▶';
+      }
+    }
+
+    // Tab Switching
+    let currentTab = 'tab-solve';
+    function switchTab(tabId) {
+      currentTab = tabId;
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(pane => pane.classList.remove('active'));
+      
+      if (tabId === 'tab-solve') document.getElementById('tab-btn-solve').classList.add('active');
+      if (tabId === 'tab-suggest') {
+        document.getElementById('tab-btn-suggest').classList.add('active');
+        if (suggestHistory.length === 0 && !suggestCurrentWord) {
+          fetchInitialSuggestion();
+        }
+      }
+      if (tabId === 'tab-evil') document.getElementById('tab-btn-evil').classList.add('active');
+      if (tabId === 'tab-results') {
+        document.getElementById('tab-btn-results').classList.add('active');
+        if (!hasLoadedResults) fetchResultsData();
+      }
+
+      const activePane = document.getElementById(tabId);
+      if (activePane) activePane.classList.add('active');
+      dismissError();
+    }
+
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Dynamic API Base URL: Uses relative URLs on Flask (port 5000 / same origin),
+    // and points to http://127.0.0.1:5000 if loaded via file:/// or a static server (e.g. port 5500).
+    const API_BASE = (window.location.protocol === 'file:' || (window.location.port && window.location.port !== '5000'))
+      ? 'http://127.0.0.1:5000'
+      : '';
+
+    /* ==========================================================================
+       TAB 1: Watch the AI solve
+       ========================================================================== */
+    const secretInput = document.getElementById('solve-secret-input');
+    secretInput.addEventListener('input', function() {
+      this.value = this.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5);
+    });
+
+    function setSecretWord(word) {
+      secretInput.value = word;
+      secretInput.focus();
+    }
+
+    function pickRandomSecret() {
+      const randomWord = PRESET_SAMPLE_WORDS[Math.floor(Math.random() * PRESET_SAMPLE_WORDS.length)];
+      setSecretWord(randomWord);
+    }
+
+    async function handleSolve() {
+      dismissError();
+      const agent = document.getElementById('solve-agent-select').value;
+      const secret = secretInput.value.trim().toLowerCase();
+
+      // Validation: letters only, length 5
+      if (!/^[a-z]{5}$/.test(secret)) {
+        showError('Please enter a valid 5-letter English word (A-Z only).');
+        secretInput.focus();
+        return;
+      }
+
+      const startBtn = document.getElementById('solve-start-btn');
+      const btnText = document.getElementById('solve-btn-text');
+      const board = document.getElementById('solve-board');
+      const statusBox = document.getElementById('solve-summary-status');
+
+      startBtn.disabled = true;
+      btnText.innerHTML = '<span class="spinner"></span> Solving...';
+      statusBox.innerHTML = '';
+      board.innerHTML = '<div style="color: var(--text-muted); font-size: 0.9rem; padding: 20px;"><span class="spinner dark"></span> Running AI search and candidate pruning...</div>';
+
+      try {
+        const response = await fetch(`${API_BASE}/api/solve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent, secret })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP ${response.status}: Failed to solve.`);
+        }
+
+        const data = await response.json();
+        // data: { solved: true, turns: [{ guess: "raise", feedback: [...], remaining: 2315 }, ...] }
+        await animateSolveTurns(data.turns, data.solved, secret);
+
+      } catch (err) {
+        board.innerHTML = '';
+        showError(err.message || 'Network error connecting to /api/solve. Check if Flask backend is running.');
+      } finally {
+        startBtn.disabled = false;
+        btnText.textContent = 'Solve Wordle';
+      }
+    }
+
+    async function animateSolveTurns(turns, solved, secret) {
+      const board = document.getElementById('solve-board');
+      const statusBox = document.getElementById('solve-summary-status');
+      board.innerHTML = '';
+
+      for (let t = 0; t < turns.length; t++) {
+        const turn = turns[t];
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'wordle-row';
+
+        const tilesGroup = document.createElement('div');
+        tilesGroup.className = 'tiles-group';
+
+        const tileEls = [];
+        for (let i = 0; i < 5; i++) {
+          const tile = document.createElement('div');
+          tile.className = 'tile filled';
+          tile.textContent = turn.guess[i].toUpperCase();
+          tilesGroup.appendChild(tile);
+          tileEls.push(tile);
+        }
+
+        const badge = document.createElement('div');
+        badge.className = 'remaining-badge';
+        badge.textContent = `Remaining: ${turn.remaining}`;
+
+        rowDiv.appendChild(tilesGroup);
+        rowDiv.appendChild(badge);
+        board.appendChild(rowDiv);
+
+        // Animate tile flips one by one (300 ms apart)
+        for (let i = 0; i < 5; i++) {
+          const t = tileEls[i];
+          const color = turn.feedback[i];
+          t.classList.add('flip');
+          setTimeout(() => t.classList.add(color), 250);
+          await sleep(300);
+        }
+
+        // Reveal remaining count badge
+        badge.classList.add('visible');
+        await sleep(350);
+      }
+
+      if (solved) {
+        statusBox.innerHTML = `
+          <div class="status-banner success">
+            🎉 Solved in <strong>${turns.length}</strong> ${turns.length === 1 ? 'guess' : 'guesses'}! Secret was <strong>${secret.toUpperCase()}</strong>
+          </div>
+        `;
+      } else {
+        statusBox.innerHTML = `
+          <div class="status-banner failure">
+            ❌ Failed to solve within limit. Secret was <strong>${secret.toUpperCase()}</strong>
+          </div>
+        `;
+      }
+    }
+
+    /* ==========================================================================
+       TAB 2: Help me solve my Wordle
+       ========================================================================== */
+    let suggestHistory = []; // [{ guess: "raise", feedback: ["yellow", ...] }]
+    let suggestCurrentWord = '';
+    let suggestCurrentColors = ['gray', 'gray', 'gray', 'gray', 'gray'];
+    let suggestGameOver = false;
+
+    async function fetchInitialSuggestion() {
+      resetSuggestGame();
+    }
+
+    async function resetSuggestGame() {
+      dismissError();
+      suggestHistory = [];
+      suggestCurrentWord = '';
+      suggestCurrentColors = ['gray', 'gray', 'gray', 'gray', 'gray'];
+      suggestGameOver = false;
+
+      document.getElementById('suggest-history-board').innerHTML = '';
+      document.getElementById('suggest-tiles').innerHTML = '';
+      document.getElementById('suggest-words-list').innerHTML = '<span style="color:var(--text-muted); font-size:0.8rem;"><span class="spinner dark"></span> Computing optimal opening word...</span>';
+      document.getElementById('suggest-active-section').style.display = 'flex';
+      document.getElementById('suggest-submit-btn').disabled = false;
+      document.getElementById('suggest-submit-btn').textContent = 'Submit Feedback & Get Next Guess';
+
+      await querySuggestAPI([]);
+    }
+
+    function handleSuggestAgentChange() {
+      resetSuggestGame();
+    }
+
+    async function querySuggestAPI(history) {
+      dismissError();
+      const agent = document.getElementById('suggest-agent-select').value;
+      const submitBtn = document.getElementById('suggest-submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner"></span> Consulting AI...';
+
+      try {
+        const response = await fetch(`${API_BASE}/api/suggest`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent, history })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP ${response.status}: Failed to get suggestion.`);
+        }
+
+        const data = await response.json();
+        // data: { guess: "grace", remaining: 26, words: ["grace", "crane", ...] }
+        suggestCurrentWord = data.guess;
+        suggestCurrentColors = ['gray', 'gray', 'gray', 'gray', 'gray'];
+
+        // Update remaining badge & words
+        document.getElementById('suggest-remaining-badge').textContent = data.remaining.toLocaleString();
+        renderSuggestWords(data.words, data.remaining);
+        renderSuggestActiveTiles(data.guess);
+
+      } catch (err) {
+        showError(err.message || 'Error communicating with /api/suggest');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Feedback & Get Next Guess';
+      }
+    }
+
+    function renderSuggestActiveTiles(word) {
+      const container = document.getElementById('suggest-tiles');
+      container.innerHTML = '';
+      if (!word) return;
+
+      for (let i = 0; i < 5; i++) {
+        const tile = document.createElement('div');
+        tile.className = `tile interactive ${suggestCurrentColors[i]}`;
+        tile.textContent = word[i].toUpperCase();
+        tile.title = 'Click to cycle: Gray -> Yellow -> Green';
+        tile.dataset.index = i;
+        tile.addEventListener('click', () => cycleSuggestTileColor(i, tile));
+        container.appendChild(tile);
+      }
+    }
+
+    function cycleSuggestTileColor(index, tileEl) {
+      if (suggestGameOver) return;
+      const cycle = { 'gray': 'yellow', 'yellow': 'green', 'green': 'gray' };
+      const nextColor = cycle[suggestCurrentColors[index]] || 'gray';
+      suggestCurrentColors[index] = nextColor;
+
+      tileEl.classList.remove('gray', 'yellow', 'green');
+      tileEl.classList.add(nextColor);
+      tileEl.classList.add('pop');
+      setTimeout(() => tileEl.classList.remove('pop'), 150);
+    }
+
+    async function submitSuggestFeedback() {
+      if (!suggestCurrentWord || suggestGameOver) return;
+
+      // Check if all green (Wordle solved!)
+      const allGreen = suggestCurrentColors.every(c => c === 'green');
+      
+      // Commit current turn to history view
+      commitSuggestTurnToHistory(suggestCurrentWord, [...suggestCurrentColors]);
+      suggestHistory.push({
+        guess: suggestCurrentWord,
+        feedback: [...suggestCurrentColors]
+      });
+
+      if (allGreen) {
+        suggestGameOver = true;
+        document.getElementById('suggest-active-section').style.display = 'none';
+        showSuggestWinMessage(suggestHistory.length);
+        return;
+      }
+
+      await querySuggestAPI(suggestHistory);
+    }
+
+    function commitSuggestTurnToHistory(guess, feedback) {
+      const historyBoard = document.getElementById('suggest-history-board');
+      const row = document.createElement('div');
+      row.className = 'wordle-row';
+
+      const tilesGroup = document.createElement('div');
+      tilesGroup.className = 'tiles-group';
+
+      for (let i = 0; i < 5; i++) {
+        const tile = document.createElement('div');
+        tile.className = `tile ${feedback[i]}`;
+        tile.textContent = guess[i].toUpperCase();
+        tilesGroup.appendChild(tile);
+      }
+
+      const badge = document.createElement('div');
+      badge.className = 'remaining-badge visible';
+      badge.textContent = `Turn ${suggestHistory.length + 1}`;
+
+      row.appendChild(tilesGroup);
+      row.appendChild(badge);
+      historyBoard.appendChild(row);
+    }
+
+    function showSuggestWinMessage(turnsCount) {
+      const historyBoard = document.getElementById('suggest-history-board');
+      const winDiv = document.createElement('div');
+      winDiv.className = 'status-banner success';
+      winDiv.innerHTML = `🎉 Congratulations! Solved external Wordle in <strong>${turnsCount}</strong> ${turnsCount === 1 ? 'guess' : 'guesses'}!`;
+      historyBoard.appendChild(winDiv);
+    }
+
+    function renderSuggestWords(words, totalRemaining) {
+      const listContainer = document.getElementById('suggest-words-list');
+      listContainer.innerHTML = '';
+
+      if (!words || words.length === 0) {
+        listContainer.innerHTML = '<span style="color: var(--text-muted); font-size: 0.8rem;">No matching words found. Check feedback colors.</span>';
+        return;
+      }
+
+      const displayList = words.slice(0, 20);
+      displayList.forEach(w => {
+        const chip = document.createElement('span');
+        chip.className = 'word-chip';
+        chip.textContent = w;
+        listContainer.appendChild(chip);
+      });
+
+      if (totalRemaining > 20) {
+        const moreSpan = document.createElement('span');
+        moreSpan.style.fontSize = '0.8rem';
+        moreSpan.style.color = 'var(--text-muted)';
+        moreSpan.style.alignSelf = 'center';
+        moreSpan.textContent = `+ ${(totalRemaining - 20).toLocaleString()} more`;
+        listContainer.appendChild(moreSpan);
+      }
+    }
+
+    /* ==========================================================================
+       TAB 3: Play against Evil Wordle (Adversarial)
+       ========================================================================== */
+    const MAX_EVIL_DISPLAY_ROWS = 6;
+    let evilHistory = []; // [{ guess: "...", feedback: [...] }]
+    let evilCurrentInput = '';
+    let evilRemainingCount = 2315;
+    let evilGameOver = false;
+    let evilIsLoading = false;
+    let evilKeyColors = {}; // letter -> 'green' | 'yellow' | 'gray'
+
+    function initEvilBoard() {
+      const board = document.getElementById('evil-board');
+      board.innerHTML = '';
+      
+      const totalRows = Math.max(MAX_EVIL_DISPLAY_ROWS, evilHistory.length + 1);
+      for (let r = 0; r < totalRows; r++) {
+        const row = document.createElement('div');
+        row.className = 'wordle-row';
+        row.id = `evil-row-${r}`;
+
+        const tilesGroup = document.createElement('div');
+        tilesGroup.className = 'tiles-group';
+
+        for (let c = 0; c < 5; c++) {
+          const tile = document.createElement('div');
+          tile.className = 'tile';
+          tile.id = `evil-tile-${r}-${c}`;
+          tilesGroup.appendChild(tile);
+        }
+
+        const badge = document.createElement('div');
+        badge.className = 'remaining-badge';
+        badge.id = `evil-badge-${r}`;
+
+        row.appendChild(tilesGroup);
+        row.appendChild(badge);
+        board.appendChild(row);
+      }
+
+      // Re-populate committed turns
+      evilHistory.forEach((turn, r) => {
+        for (let c = 0; c < 5; c++) {
+          const tile = document.getElementById(`evil-tile-${r}-${c}`);
+          tile.textContent = turn.guess[c].toUpperCase();
+          tile.classList.add(turn.feedback[c]);
+        }
+        const badge = document.getElementById(`evil-badge-${r}`);
+        badge.textContent = `Remaining: ${turn.remaining}`;
+        badge.classList.add('visible');
+      });
+
+      updateEvilActiveRowDisplay();
+    }
+
+    function renderEvilKeyboard() {
+      const kbContainer = document.getElementById('evil-keyboard');
+      kbContainer.innerHTML = '';
+
+      const layout = [
+        ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+        ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+        ['ENTER', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '⌫']
+      ];
+
+      layout.forEach(rowKeys => {
+        const rowEl = document.createElement('div');
+        rowEl.className = 'kb-row';
+
+        rowKeys.forEach(k => {
+          const btn = document.createElement('button');
+          btn.className = 'kb-key';
+          btn.textContent = k;
+          btn.dataset.key = k;
+
+          if (k === 'ENTER' || k === '⌫') {
+            btn.classList.add('key-wide');
+          }
+
+          // Apply established color priority
+          if (evilKeyColors[k]) {
+            btn.classList.add(evilKeyColors[k]);
+          }
+
+          btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            handleEvilKey(k);
+          });
+
+          rowEl.appendChild(btn);
+        });
+
+        kbContainer.appendChild(rowEl);
+      });
+    }
+
+    function updateEvilActiveRowDisplay() {
+      const activeRowIndex = evilHistory.length;
+      for (let c = 0; c < 5; c++) {
+        const tile = document.getElementById(`evil-tile-${activeRowIndex}-${c}`);
+        if (!tile) continue;
+        const letter = evilCurrentInput[c] || '';
+        tile.textContent = letter;
+        if (letter) {
+          tile.classList.add('filled');
+        } else {
+          tile.classList.remove('filled');
+        }
+      }
+    }
+
+    function handleEvilKey(key) {
+      if (evilGameOver || evilIsLoading) return;
+      dismissError();
+
+      if (key === 'ENTER') {
+        submitEvilGuess();
+      } else if (key === '⌫' || key === 'BACKSPACE') {
+        if (evilCurrentInput.length > 0) {
+          evilCurrentInput = evilCurrentInput.slice(0, -1);
+          updateEvilActiveRowDisplay();
+        }
+      } else if (/^[A-Z]$/.test(key)) {
+        if (evilCurrentInput.length < 5) {
+          evilCurrentInput += key;
+          updateEvilActiveRowDisplay();
+        }
+      }
+    }
+
+    // Physical Keyboard Listener
+    window.addEventListener('keydown', (e) => {
+      if (currentTab !== 'tab-evil') return;
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+
+      if (e.key === 'Enter') {
+        handleEvilKey('ENTER');
+      } else if (e.key === 'Backspace') {
+        handleEvilKey('⌫');
+      } else if (/^[a-zA-Z]$/.test(e.key)) {
+        handleEvilKey(e.key.toUpperCase());
+      }
+    });
+
+    async function submitEvilGuess() {
+      if (evilCurrentInput.length !== 5) {
+        const currentRow = document.getElementById(`evil-row-${evilHistory.length}`);
+        if (currentRow) {
+          currentRow.classList.add('shake');
+          setTimeout(() => currentRow.classList.remove('shake'), 400);
+        }
+        showError('Please enter a complete 5-letter word.');
+        return;
+      }
+
+      const guess = evilCurrentInput.toLowerCase();
+      evilIsLoading = true;
+      dismissError();
+
+      // Clean request history for API contract
+      const apiHistory = evilHistory.map(h => ({
+        guess: h.guess,
+        feedback: h.feedback
+      }));
+
+      try {
+        const response = await fetch(`${API_BASE}/api/adversarial`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            history: apiHistory,
+            guess: guess
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP ${response.status}: Guess rejected.`);
+        }
+
+        const data = await response.json();
+        // data: { feedback: ["gray", ...], remaining: 168, solved: false }
+        
+        const rowIndex = evilHistory.length;
+        const tileEls = [];
+        for (let c = 0; c < 5; c++) {
+          tileEls.push(document.getElementById(`evil-tile-${rowIndex}-${c}`));
+        }
+
+        // Animate tile flips with color reveal at flip midpoint
+        for (let i = 0; i < 5; i++) {
+          const t = tileEls[i];
+          const color = data.feedback[i];
+          t.classList.add('flip');
+          setTimeout(() => t.classList.add(color), 250);
+          await sleep(300);
+        }
+
+        // Update Remaining badge next to row
+        const badge = document.getElementById(`evil-badge-${rowIndex}`);
+        badge.textContent = `Remaining: ${data.remaining}`;
+        badge.classList.add('visible');
+
+        // Update Opponent Header Badge
+        evilRemainingCount = data.remaining;
+        document.getElementById('evil-remaining-badge').textContent = `Candidates alive: ${data.remaining.toLocaleString()}`;
+
+        // Update Keyboard colors (priority: green > yellow > gray)
+        updateEvilKeyboardColors(guess.toUpperCase(), data.feedback);
+
+        // Record history
+        evilHistory.push({
+          guess: guess,
+          feedback: data.feedback,
+          remaining: data.remaining
+        });
+
+        evilCurrentInput = '';
+
+        // Check victory or show tactical explanation banner
+        const isSolved = data.solved || data.feedback.every(c => c === 'green');
+        const banner = document.getElementById('evil-status-banner');
+
+        if (isSolved) {
+          evilGameOver = true;
+          showEvilWinMessage(evilHistory.length, guess.toUpperCase());
+        } else {
+          const hasColorClue = data.feedback.some(c => c === 'green' || c === 'yellow');
+          if (!hasColorClue) {
+            banner.innerHTML = `
+              <div class="status-banner info" style="font-size: 0.85rem; max-width: 580px; text-align: left; line-height: 1.45;">
+                🛡️ <strong>Why all Gray?</strong> Evil Wordle dodged your letters! It picks the feedback pattern with the largest pool of surviving words (<strong>${data.remaining.toLocaleString()} words</strong> still possible without these letters). Guess new letters to corner it into revealing Yellow or Green!
+              </div>
+            `;
+          } else {
+            banner.innerHTML = `
+              <div class="status-banner info" style="font-size: 0.85rem; max-width: 580px; text-align: left; line-height: 1.45; border-color: var(--color-yellow);">
+                🎯 <strong>Clue forced!</strong> The opponent was cornered and had to reveal matching letters! Only <strong>${data.remaining.toLocaleString()} candidate words</strong> remain possible.
+              </div>
+            `;
+          }
+
+          // If board full, add another row
+          if (evilHistory.length >= MAX_EVIL_DISPLAY_ROWS) {
+            initEvilBoard();
+          }
+        }
+
+      } catch (err) {
+        showError(err.message || 'Error sending guess to /api/adversarial');
+      } finally {
+        evilIsLoading = false;
+      }
+    }
+
+    function updateEvilKeyboardColors(guessUpper, feedback) {
+      const priority = { 'green': 3, 'yellow': 2, 'gray': 1 };
+      for (let i = 0; i < 5; i++) {
+        const letter = guessUpper[i];
+        const newColor = feedback[i];
+        const prevColor = evilKeyColors[letter] || '';
+        if (!prevColor || priority[newColor] > (priority[prevColor] || 0)) {
+          evilKeyColors[letter] = newColor;
+        }
+      }
+      renderEvilKeyboard();
+    }
+
+    function showEvilWinMessage(turns, word) {
+      const banner = document.getElementById('evil-status-banner');
+      banner.innerHTML = `
+        <div class="status-banner success">
+          🎉 Incredible! You defeated Evil Wordle in <strong>${turns}</strong> guesses! The surviving secret word was <strong>${word}</strong>!
+        </div>
+      `;
+    }
+
+    function resetEvilGame() {
+      dismissError();
+      evilHistory = [];
+      evilCurrentInput = '';
+      evilRemainingCount = 2315;
+      evilGameOver = false;
+      evilIsLoading = false;
+      evilKeyColors = {};
+      document.getElementById('evil-status-banner').innerHTML = '';
+      document.getElementById('evil-remaining-badge').textContent = 'Candidates alive: 2,315';
+      initEvilBoard();
+      renderEvilKeyboard();
+    }
+
+    /* ==========================================================================
+       TAB 4: Results (Chart.js & Data Table)
+       ========================================================================== */
+    let hasLoadedResults = false;
+    let chartAvgGuesses = null;
+    let chartWinRate = null;
+    let chartHistogram = null;
+
+    async function fetchResultsData() {
+      dismissError();
+      const msgBox = document.getElementById('results-message');
+      const tableBody = document.getElementById('results-table-body');
+      tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px;"><span class="spinner dark"></span> Fetching benchmark data from /api/results...</td></tr>';
+      msgBox.style.display = 'none';
+
+      try {
+        const response = await fetch(`${API_BASE}/api/results`);
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP ${response.status}: Failed to fetch results.`);
+        }
+
+        const data = await response.json();
+        // data: [{ agent: "entropy", average_guesses: 3.59, win_rate: 0.995, duration: 30.5, results: [3,4,...] }, ...]
+        if (!Array.isArray(data) || data.length === 0) {
+          tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color:var(--text-muted);">No simulation results available yet. Run python simulate.py first.</td></tr>';
+          return;
+        }
+
+        hasLoadedResults = true;
+        renderResultsTable(data);
+        renderResultsCharts(data);
+
+      } catch (err) {
+        tableBody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px; color:#ef4444;">Could not load results. Ensure results.json exists and backend is running.</td></tr>';
+        showError(err.message || 'Error fetching /api/results.');
+      }
+    }
+
+    function formatAgentName(raw) {
+      const mapping = {
+        'entropy': 'Entropy (Information Gain)',
+        'candidate': 'Candidate Reduction (Minimax)',
+        'candidate_reduction': 'Candidate Reduction (Minimax)',
+        'frequency': 'Letter Frequency',
+        'random': 'Random Baseline'
+      };
+      return mapping[raw] || (raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Unknown');
+    }
+
+    function renderResultsTable(data) {
+      const tbody = document.getElementById('results-table-body');
+      tbody.innerHTML = '';
+
+      data.forEach(item => {
+        const row = document.createElement('tr');
+        
+        const nameCell = document.createElement('td');
+        nameCell.style.fontWeight = '700';
+        nameCell.textContent = formatAgentName(item.agent);
+
+        const avgCell = document.createElement('td');
+        avgCell.textContent = typeof item.average_guesses === 'number' ? item.average_guesses.toFixed(3) : item.average_guesses;
+
+        const winCell = document.createElement('td');
+        const winPercent = typeof item.win_rate === 'number' ? (item.win_rate * 100).toFixed(1) + '%' : item.win_rate;
+        winCell.innerHTML = `<span style="color: ${item.win_rate >= 0.95 ? 'var(--color-green)' : 'inherit'}; font-weight:600;">${winPercent}</span>`;
+
+        const countCell = document.createElement('td');
+        countCell.textContent = Array.isArray(item.results) ? item.results.length.toLocaleString() : '-';
+
+        const durCell = document.createElement('td');
+        durCell.textContent = typeof item.duration === 'number' ? `${item.duration.toFixed(2)} s` : (item.duration ? `${item.duration} s` : '-');
+
+        row.appendChild(nameCell);
+        row.appendChild(avgCell);
+        row.appendChild(winCell);
+        row.appendChild(countCell);
+        row.appendChild(durCell);
+
+        tbody.appendChild(row);
+      });
+    }
+
+    function renderResultsCharts(data) {
+      if (typeof Chart === 'undefined') {
+        showError('Chart.js library is not loaded. Check network connection.');
+        return;
+      }
+
+      const isDark = isDarkModeActive();
+      const textColor = isDark ? '#f8fafc' : '#0f172a';
+      const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)';
+
+      const labels = data.map(d => formatAgentName(d.agent));
+      const agentColors = {
+        'entropy': '#6aaa64',
+        'candidate': '#3b82f6',
+        'candidate_reduction': '#3b82f6',
+        'frequency': '#c9b458',
+        'random': '#8b5cf6'
+      };
+
+      const barBgColors = data.map(d => agentColors[d.agent] || '#64748b');
+
+      // 1. Chart: Average Guesses
+      if (chartAvgGuesses) chartAvgGuesses.destroy();
+      const ctxAvg = document.getElementById('chart-avg-guesses').getContext('2d');
+      chartAvgGuesses = new Chart(ctxAvg, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Average Guesses',
+            data: data.map(d => d.average_guesses),
+            backgroundColor: barBgColors,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => ` ${ctx.raw.toFixed(3)} guesses`
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 6,
+              ticks: { color: textColor },
+              grid: { color: gridColor },
+              title: { display: true, text: 'Guesses (Lower = Better)', color: textColor }
+            },
+            x: {
+              ticks: { color: textColor, font: { size: 10 } },
+              grid: { display: false }
+            }
+          }
+        }
+      });
+
+      // 2. Chart: Win Rate (%)
+      if (chartWinRate) chartWinRate.destroy();
+      const ctxWin = document.getElementById('chart-win-rate').getContext('2d');
+      chartWinRate = new Chart(ctxWin, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Win Rate (%)',
+            data: data.map(d => (d.win_rate <= 1 ? d.win_rate * 100 : d.win_rate)),
+            backgroundColor: barBgColors,
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => ` ${ctx.raw.toFixed(1)}%`
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              ticks: {
+                color: textColor,
+                callback: (v) => `${v}%`
+              },
+              grid: { color: gridColor },
+              title: { display: true, text: 'Win Percentage', color: textColor }
+            },
+            x: {
+              ticks: { color: textColor, font: { size: 10 } },
+              grid: { display: false }
+            }
+          }
+        }
+      });
+
+      // 3. Chart: Histogram of Guesses Needed (Bins: 1 to 6, >6)
+      if (chartHistogram) chartHistogram.destroy();
+      const histogramBins = ['1 Turn', '2 Turns', '3 Turns', '4 Turns', '5 Turns', '6 Turns', 'Failed (>6)'];
+      
+      const datasets = data.map(item => {
+        const counts = [0, 0, 0, 0, 0, 0, 0];
+        if (Array.isArray(item.results)) {
+          item.results.forEach(g => {
+            if (g >= 1 && g <= 6) counts[g - 1]++;
+            else if (g > 6) counts[6]++;
+          });
+        }
+        return {
+          label: formatAgentName(item.agent),
+          data: counts,
+          backgroundColor: agentColors[item.agent] || '#64748b',
+          borderRadius: 4
+        };
+      });
+
+      const ctxHist = document.getElementById('chart-histogram').getContext('2d');
+      chartHistogram = new Chart(ctxHist, {
+        type: 'bar',
+        data: {
+          labels: histogramBins,
+          datasets: datasets
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              labels: { color: textColor }
+            },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => ` ${ctx.dataset.label}: ${ctx.raw} games`
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: { color: textColor },
+              grid: { color: gridColor },
+              title: { display: true, text: 'Number of Games', color: textColor }
+            },
+            x: {
+              ticks: { color: textColor },
+              grid: { color: gridColor },
+              title: { display: true, text: 'Guesses Required to Solve', color: textColor }
+            }
+          }
+        }
+      });
+    }
+
+    function updateChartsTheme() {
+      if (hasLoadedResults) {
+        fetchResultsData();
+      }
+    }
+
+    /* ==========================================================================
+       Initialization
+       ========================================================================== */
+    window.addEventListener('DOMContentLoaded', () => {
+      initTheme();
+      initEvilBoard();
+      renderEvilKeyboard();
+      if (window.location.protocol === 'file:') {
+        showError('💡 Tip: index.html was opened directly as a file. Start your Flask server ("python app.py") and open http://127.0.0.1:5000 in your browser!');
+      }
+    });
+  </script>
+</body>
+</html>
